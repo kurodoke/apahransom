@@ -1,16 +1,28 @@
 #include "../include/common.h"
 #include "../include/crypt.h"
 
-bool fileExist(const std::string& filename) {
-	{
-		std::ifstream f(filename.c_str());
-		if (f.good()) {
-			f.close();
-			return true;
-		}
-		f.close();
-		return false;
+CryptoPP::SecByteBlock contentBinParser(std::string filestream, bool isKeyFile = true) {
+	std::ifstream stream(filestream);
+	std::string buffer, raw;
+	while (!stream.eof()) {
+		std::getline(stream, buffer);
 	}
+
+	CryptoPP::StringSource s(buffer, true, new CryptoPP::HexDecoder(new CryptoPP::StringSink(raw)));
+	CryptoPP::SecByteBlock block((const unsigned char*)(raw.data()), (isKeyFile ? CryptoPP::AES::DEFAULT_KEYLENGTH : CryptoPP::AES::BLOCKSIZE));
+	stream.close();
+
+	return block;
+}
+
+bool fileExist(const std::string& filename) {
+	std::ifstream f(filename.c_str());
+	if (f.good()) {
+		f.close();
+		return true;
+	}
+	f.close();
+	return false;
 }
 
 void encrypt(std::filesystem::path pathname, bool isEncrypt) {
@@ -20,49 +32,17 @@ void encrypt(std::filesystem::path pathname, bool isEncrypt) {
 	while (isEncrypt) {
 		if (fileExist(keyfilename) && fileExist(ivfilename)) { 
 			try {
-				//stream key file that exist
-				std::ifstream keyStream(keyfilename);
+				//get the content of key
+				CryptoPP::SecByteBlock key = contentBinParser(keyfilename, true);
 
-				std::string keybuffer, rawKey;
-				while (!keyStream.eof()) {
-					std::getline(keyStream, keybuffer);
-				}
-
-				CryptoPP::StringSource sKey(keybuffer, true, new CryptoPP::HexDecoder(new CryptoPP::StringSink(rawKey)));
-				CryptoPP::SecByteBlock key((const unsigned char*)(rawKey.data()), CryptoPP::AES::DEFAULT_KEYLENGTH);
-				keyStream.close();
-				//std::string keybuffer;
-				//std::getline(keyStream, keybuffer);
-				//CryptoPP::SecByteBlock key((const unsigned char*)(keybuffer.data()), keybuffer.size());
-				//keyStream.close();
-				//hexdecode
-
-				//stream iv file that exist
-				std::ifstream ivStream(ivfilename);
-
-				std::string ivbuffer, rawIv;
-				while (!ivStream.eof()) {
-					std::getline(ivStream, ivbuffer);
-				}
-
-				CryptoPP::StringSource siv(ivbuffer, true, new CryptoPP::HexDecoder(new CryptoPP::StringSink(rawIv)));
-				CryptoPP::SecByteBlock iv((const unsigned char*)(rawIv.data()), CryptoPP::AES::BLOCKSIZE);
-				ivStream.close();
-				//std::ifstream ivStream(ivfilename);
-				//std::string ivbuffer;
-				//std::getline(ivStream, ivbuffer);
-				//CryptoPP::SecByteBlock iv((const unsigned char*)(ivbuffer.data()), ivbuffer.size());
-				//ivStream.close();
-
-				//std::cout << "key to enc :" << std::endl;
-				//std::cout << rawKey << std::endl;
-				//std::cout << "iv to enc :" << std::endl;
-				//std::cout << rawIv << std::endl << std::endl;
+				//get the content of iv
+				CryptoPP::SecByteBlock iv = contentBinParser(ivfilename, false);
 
 				//stream target file 
 				std::ifstream infile(pathname, std::ios::binary);
 
-				std::ofstream outputfile(pathname += ".trelele", std::ios::binary);
+				std::filesystem::path outpath = pathname.string() + ".trelele";
+				std::ofstream outputfile(outpath, std::ios::binary);
 
 				CryptoPP::CBC_Mode<CryptoPP::AES>::Encryption ncrypt;
 
@@ -72,6 +52,7 @@ void encrypt(std::filesystem::path pathname, bool isEncrypt) {
 
 				infile.close();
 				outputfile.close();
+				std::filesystem::remove(pathname);
 				std::cout << "\tOK" << std::endl;
 				isEncrypt = false;
 
@@ -92,7 +73,7 @@ void encrypt(std::filesystem::path pathname, bool isEncrypt) {
 			rng.GenerateBlock(key, CryptoPP::AES::DEFAULT_KEYLENGTH);
 			rng.GenerateBlock(iv, CryptoPP::AES::BLOCKSIZE);
 
-			//out stream key to key.bin
+			////out stream key to key.bin
 			std::string keyHex;
 			CryptoPP::HexEncoder keyEncode;
 			keyEncode.Put(key, sizeof(key));
@@ -105,7 +86,7 @@ void encrypt(std::filesystem::path pathname, bool isEncrypt) {
 
 			std::ofstream(keyfilename).write(keyHex.c_str(), sizeof(keyHex));
 
-			//iv out stream
+			////iv out stream
 			std::string ivHex;
 			CryptoPP::HexEncoder ivEncode;
 			ivEncode.Put(iv, sizeof(iv));
@@ -117,10 +98,6 @@ void encrypt(std::filesystem::path pathname, bool isEncrypt) {
 			}
 			std::ofstream(ivfilename).write(ivHex.c_str(), sizeof(ivHex));
 
-			//std::cout << "key to file :" << std::endl;
-			//std::cout << key << std::endl;
-			//std::cout << "iv to file :" << std::endl;
-			//std::cout << iv << std::endl << std::endl;
 		}
 	}
 
@@ -132,44 +109,11 @@ void decrypt(std::filesystem::path pathname, bool isDecrypt) {
 	std::cout << "\tDecrypting";
 	while (isDecrypt) {
 		if (fileExist(keyfilename) && fileExist(ivfilename)) {
-			//stream key file that exist
-			std::ifstream keyStream(keyfilename);
+			//get the content of key
+			CryptoPP::SecByteBlock key = contentBinParser(keyfilename, true);
 
-			std::string keybuffer, rawKey;
-			while (!keyStream.eof()) {
-				std::getline(keyStream, keybuffer);
-			}
-
-			CryptoPP::StringSource sKey(keybuffer, true, new CryptoPP::HexDecoder(new CryptoPP::StringSink(rawKey)));
-			CryptoPP::SecByteBlock key((const unsigned char*)(rawKey.data()), CryptoPP::AES::DEFAULT_KEYLENGTH);
-			keyStream.close();
-			//std::ifstream keyStream(keyfilename);
-			//std::string keybuffer;
-			//std::getline(keyStream, keybuffer);
-			//CryptoPP::SecByteBlock key((const unsigned char*)(keybuffer.data()), keybuffer.size());
-			//keyStream.close();
-
-			//stream iv file that exist
-			std::ifstream ivStream(ivfilename);
-
-			std::string ivbuffer, rawIv;
-			while (!ivStream.eof()) {
-				std::getline(ivStream, ivbuffer);
-			}
-
-			CryptoPP::StringSource sIv(ivbuffer, true, new CryptoPP::HexDecoder(new CryptoPP::StringSink(rawIv)));
-			CryptoPP::SecByteBlock iv((const unsigned char*)(rawIv.data()), CryptoPP::AES::BLOCKSIZE);
-			ivStream.close();
-			//std::ifstream ivStream(ivfilename);
-			//std::string ivbuffer;
-			//std::getline(ivStream, ivbuffer);
-			//CryptoPP::SecByteBlock iv((const unsigned char*)(ivbuffer.data()), ivbuffer.size());
-			//ivStream.close();
-
-			//std::cout << "key to dec :" << std::endl;
-			//std::cout << rawKey << std::endl;
-			//std::cout << "iv to dec :" << std::endl;
-			//std::cout << rawIv << std::endl << std::endl;
+			//get the content of iv
+			CryptoPP::SecByteBlock iv = contentBinParser(ivfilename, false);
 
 			//stream target file 
 			std::ifstream infile(pathname, std::ios::binary);
@@ -188,6 +132,7 @@ void decrypt(std::filesystem::path pathname, bool isDecrypt) {
 
 			infile.close();
 			outputfile.close();
+			std::filesystem::remove(pathname);
 			std::cout << "\tOK" << std::endl;
 			isDecrypt = false;
 
